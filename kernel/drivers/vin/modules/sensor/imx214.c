@@ -52,7 +52,9 @@ MODULE_LICENSE("GPL");
 static int imx214_sensor_vts;
 static unsigned int receiver_deskew = 5;
 module_param(receiver_deskew, uint, 0444);
-MODULE_PARM_DESC(receiver_deskew, "1080p60 MIPI1 receiver clock delay, 1..31; 30fps keeps7");
+MODULE_PARM_DESC(receiver_deskew,
+		 "1080p60 MIPI1 receiver clock delay, 1..31; 30fps keeps7");
+
 struct imx214_state {
 	struct sensor_info info;
 	bool streaming;
@@ -69,6 +71,7 @@ static int imx214_write_table(struct v4l2_subdev *sd,
 {
 	unsigned int i;
 	int ret;
+
 	for (i = 0; i < count; ++i) {
 		if (regs[i].addr == REG_DLY) {
 			usleep_range(regs[i].data * 1000, regs[i].data * 1000 + 100);
@@ -88,6 +91,7 @@ static int imx214_read16(struct v4l2_subdev *sd, u16 addr, unsigned int *value)
 {
 	data_type hi, lo;
 	int ret = sensor_read(sd, addr, &hi);
+
 	if (ret)
 		return ret;
 	ret = sensor_read(sd, addr + 1, &lo);
@@ -112,6 +116,7 @@ static int imx214_snapshot(struct v4l2_subdev *sd, const char *phase)
 	unsigned int i;
 	data_type value;
 	int ret;
+
 	for (i = 0; i < ARRAY_SIZE(regs); ++i) {
 		ret = sensor_read(sd, regs[i], &value);
 		if (ret)
@@ -673,6 +678,7 @@ static int sensor_g_exp(struct v4l2_subdev *sd, __s32 *value)
 	struct sensor_info *info = to_state(sd);
 	unsigned int lines, hts, vts;
 	int ret;
+
 	if (!imx214_state(sd)->streaming) {
 		*value = info->exp;
 		return 0;
@@ -683,7 +689,8 @@ static int sensor_g_exp(struct v4l2_subdev *sd, __s32 *value)
 	info->exp = lines << 4;
 	*value = info->exp;
 	ret = imx214_read16(sd, 0x0342, &hts);
-	if (!ret) ret = imx214_read16(sd, 0x0340, &vts);
+	if (!ret)
+		ret = imx214_read16(sd, 0x0340, &vts);
 	if (!ret)
 		pr_info("imx214-live exposure_lines=%u hts=%u vts=%u\n", lines, hts, vts);
 	return ret;
@@ -694,6 +701,7 @@ static int sensor_s_exp(struct v4l2_subdev *sd, unsigned int exp_val)
 	struct sensor_info *info = to_state(sd);
 	unsigned int lines = clamp_t(unsigned int, (exp_val + 8) >> 4, 1, 65525);
 	int ret;
+
 	if (info->current_wins && info->current_wins->fps_fixed == 60)
 		lines = min_t(unsigned int, lines, info->current_wins->vts - 10);
 	ret = sensor_write(sd, 0x0202, lines >> 8);
@@ -1052,14 +1060,20 @@ static struct sensor_win_size sensor_win_sizes[] = {
 	 },
 #endif
 
-	/* Nominal60; exact timing is defined by the generated reference profile. */
+	/* Nominal 60; exact timing is defined by the generated reference profile. */
 	{
-	 .width = 1920, .height = 1080,
-	 .hts = 5008, .vts = IMX214_60_VTS,
-	 .pclk = IMX214_60_PCLK, .mipi_bps = IMX214_60_MIPI_BPS,
-	 .fps_fixed = 60, .bin_factor = 2,
-	 .intg_min = 16, .intg_max = (IMX214_60_VTS - 10) << 4,
-	 .gain_min = 16, .gain_max = (16 << 4),
+	 .width = 1920,
+	 .height = 1080,
+	 .hts = 5008,
+	 .vts = IMX214_60_VTS,
+	 .pclk = IMX214_60_PCLK,
+	 .mipi_bps = IMX214_60_MIPI_BPS,
+	 .fps_fixed = 60,
+	 .bin_factor = 2,
+	 .intg_min = 16,
+	 .intg_max = (IMX214_60_VTS - 10) << 4,
+	 .gain_min = 16,
+	 .gain_max = (16 << 4),
 	 .regs = (struct regval_list *)sensor_1080p60_regs,
 	 .regs_size = ARRAY_SIZE(sensor_1080p60_regs),
 	 },
@@ -1082,7 +1096,8 @@ static int sensor_reg_init(struct sensor_info *info)
 		return ret;
 	usleep_range(2000, 2500);
 	if (w->fps_fixed != 60) {
-		ret = imx214_write_table(sd, sensor_default_regs, ARRAY_SIZE(sensor_default_regs));
+		ret = imx214_write_table(sd, sensor_default_regs,
+					 ARRAY_SIZE(sensor_default_regs));
 		if (ret)
 			return ret;
 	}
@@ -1098,12 +1113,16 @@ static int sensor_reg_init(struct sensor_info *info)
 			return ret;
 	}
 	ret = imx214_read16(sd, 0x0342, &hts);
-	if (!ret) ret = imx214_read16(sd, 0x0340, &vts);
-	if (!ret) ret = imx214_read16(sd, 0x034c, &width);
-	if (!ret) ret = imx214_read16(sd, 0x034e, &height);
+	if (!ret)
+		ret = imx214_read16(sd, 0x0340, &vts);
+	if (!ret)
+		ret = imx214_read16(sd, 0x034c, &width);
+	if (!ret)
+		ret = imx214_read16(sd, 0x034e, &height);
 	if (ret)
 		return ret;
-	if (hts != w->hts || vts != w->vts || width != w->width || height != w->height)
+	if (hts != w->hts || vts != w->vts ||
+	    width != w->width || height != w->height)
 		return -EIO;
 	info->width = w->width;
 	info->height = w->height;
@@ -1114,8 +1133,10 @@ static int sensor_reg_init(struct sensor_info *info)
 	ret = sensor_write(sd, 0x0100, 1);
 	if (!ret) {
 		imx214_state(sd)->streaming = true;
-		pr_info("imx214-mode width=%u height=%u nominal_fps=%u hts=%u vts=%u pclk=%u mipi_bps=%u\n",
-			w->width, w->height, w->fps_fixed, w->hts, w->vts, w->pclk, w->mipi_bps);
+		pr_info("imx214-mode width=%u height=%u nominal_fps=%u "
+			"hts=%u vts=%u pclk=%u mipi_bps=%u\n",
+			w->width, w->height, w->fps_fixed, w->hts, w->vts,
+			w->pclk, w->mipi_bps);
 	}
 	return ret;
 }
@@ -1123,6 +1144,7 @@ static int sensor_reg_init(struct sensor_info *info)
 static int sensor_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	int ret;
+
 	if (!enable) {
 		ret = sensor_write(sd, 0x0100, 0);
 		if (!ret)
@@ -1134,12 +1156,14 @@ static int sensor_s_stream(struct v4l2_subdev *sd, int enable)
 
 /* Enumerate each matching interval once; do not expose global table indexes. */
 static int imx214_enum_interval(struct v4l2_subdev *sd,
-		struct v4l2_subdev_state *state,
-		struct v4l2_subdev_frame_interval_enum *fie)
+				struct v4l2_subdev_state *state,
+				struct v4l2_subdev_frame_interval_enum *fie)
 {
 	unsigned int i, match = 0;
+
 	for (i = 0; i < N_WIN_SIZES; ++i) {
 		struct sensor_win_size *w = &sensor_win_sizes[i];
+
 		if (w->width != fie->width || w->height != fie->height)
 			continue;
 		if (match++ == fie->index) {
@@ -1152,18 +1176,21 @@ static int imx214_enum_interval(struct v4l2_subdev *sd,
 }
 
 static int imx214_set_fmt(struct v4l2_subdev *sd,
-		struct v4l2_subdev_state *state, struct v4l2_subdev_format *fmt)
+			  struct v4l2_subdev_state *state,
+			  struct v4l2_subdev_format *fmt)
 {
 	struct sensor_info *info = to_state(sd);
-	/* Existing BSP API carries this into mbus reserved metadata before CSI setup. */
+
+	/* Carry deskew into mbus reserved metadata before CSI setup. */
 	info->deskew = info->tpf.denominator == 60 ? receiver_deskew : 7;
 	return sensor_set_fmt(sd, state, fmt);
 }
 
 static int imx214_frame_interval(struct v4l2_subdev *sd,
-		struct v4l2_subdev_frame_interval *fi)
+				 struct v4l2_subdev_frame_interval *fi)
 {
 	struct sensor_win_size *w = to_state(sd)->current_wins;
+
 	if (!w)
 		return -EINVAL;
 	fi->interval.numerator = w->hts * w->vts;

@@ -1009,7 +1009,8 @@ static int vin_pipeline_set_mbus_config(struct vin_core *vinc)
 			/* ret = v4l2_subdev_call(sd, pad, set_mbus_config,0, &mcfg); */
 			if (ret < 0) {
 				vin_err("%s set_mbus_config error!\n", me->name);
-				mutex_unlock(&vinc->vid_cap.vdev.entity.graph_obj.mdev->graph_mutex);
+				mutex_unlock(
+					&vinc->vid_cap.vdev.entity.graph_obj.mdev->graph_mutex);
 				media_graph_walk_cleanup(&graph);
 				goto out;
 			}
@@ -2555,7 +2556,8 @@ static int vidioc_g_parm(struct file *file, void *priv,
 
 }
 
-static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms, bool strict)
+static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms,
+			bool strict)
 {
 	struct vin_vid_cap *cap = &vinc->vid_cap;
 	struct sensor_instance *inst = get_valid_sensor(vinc);
@@ -2569,9 +2571,11 @@ static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms, bo
 	    !strcmp(cap->pipe.sd[VIN_IND_SENSOR]->name, "imx214")) {
 		struct sensor_info *info = to_state(cap->pipe.sd[VIN_IND_SENSOR]);
 		struct v4l2_fract *tpf = &parms->parm.capture.timeperframe;
+
 		if (!tpf->numerator && !tpf->denominator) {
 			tpf->numerator = 1;
-			tpf->denominator = info->current_wins ? info->current_wins->fps_fixed : 30;
+			tpf->denominator = info->current_wins ?
+				info->current_wins->fps_fixed : 30;
 		} else if (!tpf->numerator || !tpf->denominator) {
 			return -EINVAL;
 		}
@@ -2670,12 +2674,15 @@ static int vidioc_s_parm(struct file *file, void *priv,
 	    parms->parm.capture.timeperframe.numerator == 1 &&
 	    (parms->parm.capture.timeperframe.denominator == 30 ||
 	     parms->parm.capture.timeperframe.denominator == 60) &&
-	    info->current_wins->fps_fixed != parms->parm.capture.timeperframe.denominator) {
-		if (vin_streaming(cap) || vb2_is_busy(&cap->vb_vidq) || info->stream_count > 0)
+	    info->current_wins->fps_fixed !=
+			parms->parm.capture.timeperframe.denominator) {
+		if (vin_streaming(cap) || vb2_is_busy(&cap->vb_vidq) ||
+		    info->stream_count > 0)
 			return -EBUSY;
 		reformat = true;
 		oldparm.parm.capture.timeperframe.numerator = 1;
-		oldparm.parm.capture.timeperframe.denominator = info->current_wins->fps_fixed;
+		oldparm.parm.capture.timeperframe.denominator =
+			info->current_wins->fps_fixed;
 		oldparm.parm.capture.capturemode = info->capture_mode;
 		oldparm.parm.capture.reserved[0] = info->use_current_win;
 		oldparm.parm.capture.reserved[1] = info->isp_wdr_mode;
@@ -2704,12 +2711,13 @@ static int vidioc_s_parm(struct file *file, void *priv,
 	}
 	if (reformat) {
 		ret = __vin_set_fmt(vinc, &fmt);
-		if (!ret && info->current_wins->fps_fixed != parms->parm.capture.timeperframe.denominator)
+		if (!ret && info->current_wins->fps_fixed !=
+			    parms->parm.capture.timeperframe.denominator)
 			ret = -EINVAL;
 		if (ret)
 			goto restore;
 		pr_info("vin-imx214 rate mode reconfigured to %u fps before buffers\n",
-				info->current_wins->fps_fixed);
+			info->current_wins->fps_fixed);
 		return ret;
 	}
 	return 0;
