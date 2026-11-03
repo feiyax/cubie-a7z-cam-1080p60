@@ -27,7 +27,8 @@
 #include "sensor_helper.h"
 
 MODULE_AUTHOR("lwj");
-MODULE_DESCRIPTION("A low-level driver for IMX214 sensors");
+MODULE_DESCRIPTION("A733 IMX214 isolated 1080p60 experiment");
+MODULE_VERSION("0.2.0");
 MODULE_LICENSE("GPL");
 
 #define MCLK              (24*1000*1000)
@@ -48,7 +49,77 @@ MODULE_LICENSE("GPL");
  */
 #define I2C_ADDR 0x20
 #define SENSOR_NAME "imx214"
-int imx214_sensor_vts;
+static int imx214_sensor_vts;
+static unsigned int receiver_deskew = 5;
+module_param(receiver_deskew, uint, 0444);
+MODULE_PARM_DESC(receiver_deskew, "1080p60 MIPI1 receiver clock delay, 1..31; 30fps keeps7");
+struct imx214_state {
+	struct sensor_info info;
+	bool streaming;
+};
+
+static struct imx214_state *imx214_state(struct v4l2_subdev *sd)
+{
+	return container_of(to_state(sd), struct imx214_state, info);
+}
+
+/* Explicitly bounded, checked writes; avoid shared array coalescing overrun. */
+static int imx214_write_table(struct v4l2_subdev *sd,
+			    const struct regval_list *regs, unsigned int count)
+{
+	unsigned int i;
+	int ret;
+	for (i = 0; i < count; ++i) {
+		if (regs[i].addr == REG_DLY) {
+			usleep_range(regs[i].data * 1000, regs[i].data * 1000 + 100);
+			continue;
+		}
+		/* Stream-on is always issued explicitly after all mode settings. */
+		if (regs[i].addr == 0x0100 && regs[i].data == 1)
+			continue;
+		ret = sensor_write(sd, regs[i].addr, regs[i].data);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int imx214_read16(struct v4l2_subdev *sd, u16 addr, unsigned int *value)
+{
+	data_type hi, lo;
+	int ret = sensor_read(sd, addr, &hi);
+	if (ret)
+		return ret;
+	ret = sensor_read(sd, addr + 1, &lo);
+	if (!ret)
+		*value = ((unsigned int)hi << 8) | lo;
+	return ret;
+}
+
+static int imx214_snapshot(struct v4l2_subdev *sd, const char *phase)
+{
+	static const u16 regs[] = {
+		0x0100, 0x0114, 0x0112, 0x0113, 0x0136, 0x0137,
+		0x0301, 0x0303, 0x0305, 0x0306, 0x0307, 0x0309, 0x030b,
+		0x0310, 0x0820, 0x0821, 0x0822, 0x0823,
+		0x0340, 0x0341, 0x0342, 0x0343, 0x0344, 0x0345,
+		0x0346, 0x0347, 0x0348, 0x0349, 0x034a, 0x034b,
+		0x034c, 0x034d, 0x034e, 0x034f, 0x0900, 0x0901, 0x0902,
+		0x0202, 0x0203, 0x0204, 0x0205, 0x3a03, 0x3a04, 0x3a05,
+		0x0808, 0x080b, 0x080d, 0x080f, 0x0811, 0x0813,
+		0x0815, 0x0817, 0x0819,
+	};
+	unsigned int i;
+	data_type value;
+	int ret;
+	for (i = 0; i < ARRAY_SIZE(regs); ++i) {
+		ret = sensor_read(sd, regs[i], &value);
+		if (ret)
+			return ret;
+		pr_info("imx214-timing %s reg=%04x value=%02x\n", phase, regs[i], value);
+	}
+	return 0;
+}
 
 struct cfg_array {		/* coming later */
 	struct regval_list *regs;
@@ -592,38 +663,46 @@ static struct regval_list sensor_1080p_regs[] = {
  *
  */
 
+#include "imx214-1080p60.h"
+
 static struct regval_list sensor_fmt_raw[] = {
 };
 
 static int sensor_g_exp(struct v4l2_subdev *sd, __s32 *value)
 {
 	struct sensor_info *info = to_state(sd);
-
+	unsigned int lines, hts, vts;
+	int ret;
+	if (!imx214_state(sd)->streaming) {
+		*value = info->exp;
+		return 0;
+	}
+	ret = imx214_read16(sd, 0x0202, &lines);
+	if (ret)
+		return ret;
+	info->exp = lines << 4;
 	*value = info->exp;
-	sensor_dbg("sensor_get_exposure = %d\n", info->exp);
-	return 0;
+	ret = imx214_read16(sd, 0x0342, &hts);
+	if (!ret) ret = imx214_read16(sd, 0x0340, &vts);
+	if (!ret)
+		pr_info("imx214-live exposure_lines=%u hts=%u vts=%u\n", lines, hts, vts);
+	return ret;
 }
 
 static int sensor_s_exp(struct v4l2_subdev *sd, unsigned int exp_val)
 {
-	unsigned char explow, exphigh;
 	struct sensor_info *info = to_state(sd);
-
-	if (exp_val > 0xffffff)
-		exp_val = 0xfffff0;
-	if (exp_val < 16)
-		exp_val = 16;
-
-	exp_val = (exp_val + 8) >> 4;
-
-	exphigh = (unsigned char)((0xff00 & exp_val) >> 8);
-	explow = (unsigned char)((0x00ff & exp_val));
-
-	sensor_write(sd, 0x0203, explow);
-	sensor_write(sd, 0x0202, exphigh);
-
-	info->exp = exp_val;
-	return 0;
+	unsigned int lines = clamp_t(unsigned int, (exp_val + 8) >> 4, 1, 65525);
+	int ret;
+	if (info->current_wins && info->current_wins->fps_fixed == 60)
+		lines = min_t(unsigned int, lines, info->current_wins->vts - 10);
+	ret = sensor_write(sd, 0x0202, lines >> 8);
+	if (ret)
+		return ret;
+	ret = sensor_write(sd, 0x0203, lines & 0xff);
+	if (!ret)
+		info->exp = lines << 4;
+	return ret;
 }
 
 static int sensor_g_gain(struct v4l2_subdev *sd, __s32 *value)
@@ -656,7 +735,7 @@ static int sensor_s_gain(struct v4l2_subdev *sd, int gain_val)
 static int sensor_s_exp_gain(struct v4l2_subdev *sd,
 			     struct sensor_exp_gain *exp_gain)
 {
-	int exp_val, gain_val, shutter, frame_length;
+	int exp_val, gain_val, ret;
 	struct sensor_info *info = to_state(sd);
 
 	exp_val = exp_gain->exp_val;
@@ -670,19 +749,17 @@ static int sensor_s_exp_gain(struct v4l2_subdev *sd,
 	if (exp_val > 0xfffff)
 		exp_val = 0xfffff;
 
-	shutter = exp_val / 16;
-	if (shutter > imx214_sensor_vts)
-		frame_length = shutter;
-	else
-		frame_length = imx214_sensor_vts;
-
-
-
-
-	sensor_write(sd, 0x0104, 0x01);
-	sensor_s_exp(sd, exp_val);
-	sensor_s_gain(sd, gain_val);
-	sensor_write(sd, 0x0104, 0x00);
+	ret = sensor_write(sd, 0x0104, 0x01);
+	if (ret)
+		return ret;
+	ret = sensor_s_exp(sd, exp_val);
+	if (!ret)
+		ret = sensor_s_gain(sd, gain_val);
+	/* Always release group hold, including when a write failed. */
+	if (sensor_write(sd, 0x0104, 0x00) && !ret)
+		ret = -EIO;
+	if (ret)
+		return ret;
 
 	if (gain_val > 64) {
 		sensor_write(sd, 0x30a2, 0x03);
@@ -692,7 +769,6 @@ static int sensor_s_exp_gain(struct v4l2_subdev *sd,
 		sensor_write(sd, 0x30a2, 0x00);
 	}
 
-	info->exp = exp_val;
 	info->gain = gain_val;
 	return 0;
 }
@@ -703,9 +779,6 @@ static int sensor_s_exp_gain(struct v4l2_subdev *sd,
 
 static int sensor_power(struct v4l2_subdev *sd, int on)
 {
-	int ret;
-
-	ret = 0;
 	switch (on) {
 	case STBY_ON:
 		sensor_dbg("STBY_ON!\n");
@@ -747,6 +820,7 @@ static int sensor_power(struct v4l2_subdev *sd, int on)
 		cci_unlock(sd);
 		break;
 	case PWR_OFF:
+		imx214_state(sd)->streaming = false;
 		sensor_dbg("PWR_OFF!\n");
 		cci_lock(sd);
 		vin_set_mclk(sd, OFF);
@@ -845,7 +919,8 @@ static long sensor_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		}
 		break;
 	case SET_FPS:
-		break;
+		/* Use VIN S_PARM followed by S_FMT; live PLL changes are unsafe. */
+		return -EOPNOTSUPP;
 	case VIDIOC_VIN_SENSOR_EXP_GAIN:
 		ret = sensor_s_exp_gain(sd, (struct sensor_exp_gain *)arg);
 		break;
@@ -977,53 +1052,123 @@ static struct sensor_win_size sensor_win_sizes[] = {
 	 },
 #endif
 
+	/* Nominal60; exact timing is defined by the generated reference profile. */
+	{
+	 .width = 1920, .height = 1080,
+	 .hts = 5008, .vts = IMX214_60_VTS,
+	 .pclk = IMX214_60_PCLK, .mipi_bps = IMX214_60_MIPI_BPS,
+	 .fps_fixed = 60, .bin_factor = 2,
+	 .intg_min = 16, .intg_max = (IMX214_60_VTS - 10) << 4,
+	 .gain_min = 16, .gain_max = (16 << 4),
+	 .regs = (struct regval_list *)sensor_1080p60_regs,
+	 .regs_size = ARRAY_SIZE(sensor_1080p60_regs),
+	 },
+
 };
 
 #define N_WIN_SIZES (ARRAY_SIZE(sensor_win_sizes))
 
 static int sensor_reg_init(struct sensor_info *info)
 {
-
-	int ret = 0;
 	struct v4l2_subdev *sd = &info->sd;
-	struct sensor_format_struct *sensor_fmt = info->fmt;
-	struct sensor_win_size *wsize = info->current_wins;
+	struct sensor_win_size *w = info->current_wins;
+	unsigned int hts, vts, width, height;
+	int ret;
 
-	ret = sensor_write_array(sd, sensor_default_regs,
-			       ARRAY_SIZE(sensor_default_regs));
-	if (ret < 0) {
-		sensor_err("write sensor_default_regs error\n");
+	if (!w)
+		return -EINVAL;
+	ret = sensor_write(sd, 0x0100, 0);
+	if (ret)
 		return ret;
+	usleep_range(2000, 2500);
+	if (w->fps_fixed != 60) {
+		ret = imx214_write_table(sd, sensor_default_regs, ARRAY_SIZE(sensor_default_regs));
+		if (ret)
+			return ret;
 	}
-
-	sensor_write_array(sd, sensor_fmt->regs, sensor_fmt->regs_size);
-
-	if (wsize->regs)
-		sensor_write_array(sd, wsize->regs, wsize->regs_size);
-	if (wsize->set_size)
-		wsize->set_size(sd);
-
-	info->width = wsize->width;
-	info->height = wsize->height;
-	imx214_sensor_vts = wsize->vts;
-
-	sensor_print("s_fmt set width = %d, height = %d\n", wsize->width,
-		      wsize->height);
-
-	return 0;
+	ret = imx214_write_table(sd, info->fmt->regs, info->fmt->regs_size);
+	if (ret)
+		return ret;
+	ret = imx214_write_table(sd, w->regs, w->regs_size);
+	if (ret)
+		return ret;
+	if (w->set_size) {
+		ret = w->set_size(sd);
+		if (ret)
+			return ret;
+	}
+	ret = imx214_read16(sd, 0x0342, &hts);
+	if (!ret) ret = imx214_read16(sd, 0x0340, &vts);
+	if (!ret) ret = imx214_read16(sd, 0x034c, &width);
+	if (!ret) ret = imx214_read16(sd, 0x034e, &height);
+	if (ret)
+		return ret;
+	if (hts != w->hts || vts != w->vts || width != w->width || height != w->height)
+		return -EIO;
+	info->width = w->width;
+	info->height = w->height;
+	imx214_sensor_vts = w->vts;
+	ret = imx214_snapshot(sd, "configured");
+	if (ret)
+		return ret;
+	ret = sensor_write(sd, 0x0100, 1);
+	if (!ret) {
+		imx214_state(sd)->streaming = true;
+		pr_info("imx214-mode width=%u height=%u nominal_fps=%u hts=%u vts=%u pclk=%u mipi_bps=%u\n",
+			w->width, w->height, w->fps_fixed, w->hts, w->vts, w->pclk, w->mipi_bps);
+	}
+	return ret;
 }
 
 static int sensor_s_stream(struct v4l2_subdev *sd, int enable)
 {
+	int ret;
+	if (!enable) {
+		ret = sensor_write(sd, 0x0100, 0);
+		if (!ret)
+			imx214_state(sd)->streaming = false;
+		return ret;
+	}
+	return sensor_reg_init(to_state(sd));
+}
+
+/* Enumerate each matching interval once; do not expose global table indexes. */
+static int imx214_enum_interval(struct v4l2_subdev *sd,
+		struct v4l2_subdev_state *state,
+		struct v4l2_subdev_frame_interval_enum *fie)
+{
+	unsigned int i, match = 0;
+	for (i = 0; i < N_WIN_SIZES; ++i) {
+		struct sensor_win_size *w = &sensor_win_sizes[i];
+		if (w->width != fie->width || w->height != fie->height)
+			continue;
+		if (match++ == fie->index) {
+			fie->interval.numerator = 1;
+			fie->interval.denominator = w->fps_fixed;
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+
+static int imx214_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_state *state, struct v4l2_subdev_format *fmt)
+{
 	struct sensor_info *info = to_state(sd);
+	/* Existing BSP API carries this into mbus reserved metadata before CSI setup. */
+	info->deskew = info->tpf.denominator == 60 ? receiver_deskew : 7;
+	return sensor_set_fmt(sd, state, fmt);
+}
 
-	sensor_print("%s on = %d, %d*%d %x\n", __func__, enable,
-		  info->current_wins->width,
-		  info->current_wins->height, info->fmt->mbus_code);
-
-	if (!enable)
-		return 0;
-	return sensor_reg_init(info);
+static int imx214_frame_interval(struct v4l2_subdev *sd,
+		struct v4l2_subdev_frame_interval *fi)
+{
+	struct sensor_win_size *w = to_state(sd)->current_wins;
+	if (!w)
+		return -EINVAL;
+	fi->interval.numerator = w->hts * w->vts;
+	fi->interval.denominator = w->pclk;
+	return 0;
 }
 
 static int sensor_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
@@ -1060,6 +1205,12 @@ static int sensor_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct v4l2_subdev *sd = &info->sd;
 
 	switch (ctrl->id) {
+	case V4L2_CID_FRAME_RATE:
+		if (imx214_state(sd)->streaming)
+			return -EBUSY;
+		info->tpf.numerator = 1;
+		info->tpf.denominator = ctrl->val;
+		return 0;
 	case V4L2_CID_GAIN:
 		return sensor_s_gain(sd, ctrl->val);
 	case V4L2_CID_EXPOSURE:
@@ -1087,14 +1238,15 @@ static const struct v4l2_subdev_core_ops sensor_core_ops = {
 
 static const struct v4l2_subdev_video_ops sensor_video_ops = {
 	.s_stream = sensor_s_stream,
+	.g_frame_interval = imx214_frame_interval,
 };
 
 static const struct v4l2_subdev_pad_ops sensor_pad_ops = {
 	.enum_mbus_code = sensor_enum_mbus_code,
 	.enum_frame_size = sensor_enum_frame_size,
-	.enum_frame_interval = sensor_enum_frame_interval,
+	.enum_frame_interval = imx214_enum_interval,
 	.get_fmt = sensor_get_fmt,
-	.set_fmt = sensor_set_fmt,
+	.set_fmt = imx214_set_fmt,
 	.get_mbus_config = sensor_g_mbus_config,
 };
 
@@ -1117,10 +1269,10 @@ static const struct v4l2_ctrl_config sensor_custom_ctrls[] = {
 		.id = V4L2_CID_FRAME_RATE,
 		.name = "frame rate",
 		.type = V4L2_CTRL_TYPE_INTEGER,
-		.min = 15,
-		.max = 120,
-		.step = 1,
-		.def = 120,
+		.min = 30,
+		.max = 60,
+		.step = 30,
+		.def = 30,
 	},
 };
 
@@ -1163,7 +1315,7 @@ static int sensor_probe(struct i2c_client *client)
 	struct v4l2_subdev *sd;
 	struct sensor_info *info;
 
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	info = (struct sensor_info *)kzalloc(sizeof(struct imx214_state), GFP_KERNEL);
 	if (info == NULL)
 		return -ENOMEM;
 	sd = &info->sd;
@@ -1180,6 +1332,7 @@ static int sensor_probe(struct i2c_client *client)
 	info->win_pt = &sensor_win_sizes[0];
 	info->fmt_num = N_FMTS;
 	info->win_size_num = N_WIN_SIZES;
+	info->current_wins = &sensor_win_sizes[2];
 	info->sensor_field = V4L2_FIELD_NONE;
 	info->af_first_flag = 1;
 
@@ -1219,6 +1372,8 @@ static struct i2c_driver sensor_driver = {
 };
 static __init int init_sensor(void)
 {
+	if (receiver_deskew < 1 || receiver_deskew > 31)
+		return -EINVAL;
 	return cci_dev_init_helper(&sensor_driver);
 }
 
