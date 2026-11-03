@@ -557,6 +557,21 @@ static int queue_setup(struct vb2_queue *vq,
 	if (*nbuffers == 0)
 		*nbuffers = 8;
 
+	/* Keep enough exported buffers for bounded asynchronous VE processing.
+	 * The original five-buffer pool can starve at 60 fps.  Scope this to
+	 * the new plain IMX214 mode; retain all original-mode allocations.
+	 */
+	if (cap->pipe.sd[VIN_IND_SENSOR] &&
+	    !strcmp(cap->pipe.sd[VIN_IND_SENSOR]->name, "imx214") &&
+	    cap->frame.o_width == 1920 && cap->frame.o_height == 1080 &&
+	    cap->capture_mode != V4L2_MODE_IMAGE && !cap->vinc->dma_merge_mode) {
+		struct sensor_info *info = to_state(cap->pipe.sd[VIN_IND_SENSOR]);
+
+		if (info->current_wins && info->current_wins->fps_fixed == 60 &&
+		    !info->large_image && !info->isp_wdr_mode && !info->use_current_win)
+			*nbuffers = max(*nbuffers, 12U);
+	}
+
 	while (size * *nbuffers > MAX_FRAME_MEM) {
 		(*nbuffers)--;
 		buf_max_flag = 1;
@@ -994,6 +1009,7 @@ static int vin_pipeline_set_mbus_config(struct vin_core *vinc)
 			/* ret = v4l2_subdev_call(sd, pad, set_mbus_config,0, &mcfg); */
 			if (ret < 0) {
 				vin_err("%s set_mbus_config error!\n", me->name);
+				mutex_unlock(&vinc->vid_cap.vdev.entity.graph_obj.mdev->graph_mutex);
 				media_graph_walk_cleanup(&graph);
 				goto out;
 			}
@@ -1106,7 +1122,9 @@ static int __vin_set_fmt(struct vin_core *vinc, struct v4l2_format *f)
 	vin_log(VIN_LOG_FMT, "pipeline try fmt %d*%d code %x field %d colorspace %d\n",
 		mf.width, mf.height, mf.code, mf.field, mf.colorspace);
 
-	vin_pipeline_set_mbus_config(vinc);
+	ret = vin_pipeline_set_mbus_config(vinc);
+	if (ret < 0)
+		return ret;
 
 	/* get current win configs */
 	memset(&win_cfg, 0, sizeof(win_cfg));
@@ -2537,11 +2555,29 @@ static int vidioc_g_parm(struct file *file, void *priv,
 
 }
 
-static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms)
+static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms, bool strict)
 {
 	struct vin_vid_cap *cap = &vinc->vid_cap;
 	struct sensor_instance *inst = get_valid_sensor(vinc);
 	int ret = 0;
+
+	/* Vendor v4l2src first requests an unspecified 0/0 interval.
+	 * sensor_s_parm otherwise stores it and rejects every later request
+	 * because it tests the previous numerator. Keep a valid IMX214 tpf.
+	 */
+	if (cap->pipe.sd[VIN_IND_SENSOR] &&
+	    !strcmp(cap->pipe.sd[VIN_IND_SENSOR]->name, "imx214")) {
+		struct sensor_info *info = to_state(cap->pipe.sd[VIN_IND_SENSOR]);
+		struct v4l2_fract *tpf = &parms->parm.capture.timeperframe;
+		if (!tpf->numerator && !tpf->denominator) {
+			tpf->numerator = 1;
+			tpf->denominator = info->current_wins ? info->current_wins->fps_fixed : 30;
+		} else if (!tpf->numerator || !tpf->denominator) {
+			return -EINVAL;
+		}
+		if (!info->tpf.numerator)
+			info->tpf = *tpf;
+	}
 
 	if (parms->parm.capture.capturemode != V4L2_MODE_VIDEO &&
 	    parms->parm.capture.capturemode != V4L2_MODE_IMAGE &&
@@ -2562,54 +2598,128 @@ static int __vin_s_parm(struct vin_core *vinc, struct v4l2_streamparm *parms)
 		return -EINVAL;
 
 	ret = sensor_s_parm(cap->pipe.sd[VIN_IND_SENSOR], parms);
-	if (ret < 0)
+	if (ret < 0) {
 		vin_warn("v4l2 subdev sensor s_parm error!\n");
+		if (strict)
+			return ret;
+	}
 
 	ret = sunxi_csi_subdev_s_parm(cap->pipe.sd[VIN_IND_CSI], parms);
-	if (ret < 0)
+	if (ret < 0) {
 		vin_warn("v4l2 subdev csi s_parm error!\n");
+		if (strict)
+			return ret;
+	}
 
 #ifdef SUPPORT_ISP_TDM
 	if (vinc->tdm_rx_sel != 0xff) {
 		ret = sunxi_tdm_subdev_s_parm(cap->pipe.sd[VIN_IND_TDM_RX], parms);
-		if (ret < 0)
+		if (ret < 0) {
 			vin_warn("v4l2 subdev tdm s_parm error!\n");
+			if (strict)
+				return ret;
+		}
 	}
 #endif
 
 	if (inst->is_isp_used && cap->pipe.sd[VIN_IND_ISP]) {
 		ret = sunxi_isp_s_parm(cap->pipe.sd[VIN_IND_ISP], parms);
-		if (ret < 0)
+		if (ret < 0) {
 			vin_warn("v4l2 subdev isp s_parm error!\n");
-	}
-
-	ret = sunxi_scaler_subdev_s_parm(cap->pipe.sd[VIN_IND_SCALER], parms);
-		if (ret < 0)
-			vin_warn("v4l2 subdev scaler s_parm error!\n");
-
-	return ret;
-}
-
-static int vidioc_s_parm(struct file *file, void *priv,
-			struct v4l2_streamparm *parms)
-{
-	struct vin_core *vinc = video_drvdata(file);
-	int ret;
-	__maybe_unused struct vin_core *vinc_bind = NULL;
-
-	if (vinc->dma_merge_mode == 1) {
-		if (vinc->id % 4 == 1 && vin_core_gbl[vinc->id - 1]) {
-			vinc_bind = vin_core_gbl[vinc->id - 1];
-			ret = __vin_s_parm(vinc_bind, parms);
-			if (ret < 0)
+			if (strict)
 				return ret;
 		}
 	}
 
-	ret = __vin_s_parm(vinc, parms);
-	if (ret < 0)
+	ret = sunxi_scaler_subdev_s_parm(cap->pipe.sd[VIN_IND_SCALER], parms);
+		if (ret < 0) {
+			vin_warn("v4l2 subdev scaler s_parm error!\n");
+			if (strict)
+				return ret;
+		}
+
+	return ret;
+}
+
+/* S_PARM commonly follows S_FMT (GStreamer). Re-run format propagation
+ * for an IMX214 timing-mode change before buffers/streaming are active.
+ * Switching only at sensor stream-on would leave stale CSI/ISP timing.
+ */
+static int vidioc_s_parm(struct file *file, void *priv,
+			struct v4l2_streamparm *parms)
+{
+	struct vin_core *vinc = video_drvdata(file);
+	struct vin_vid_cap *cap = &vinc->vid_cap;
+	struct v4l2_subdev *sensor = cap->pipe.sd[VIN_IND_SENSOR];
+	struct sensor_info *info = sensor ? to_state(sensor) : NULL;
+	struct v4l2_format fmt = { .type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE };
+	struct v4l2_format oldfmt;
+	struct v4l2_streamparm oldparm = { .type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE };
+	bool reformat = false;
+	int ret, restore_ret;
+	__maybe_unused struct vin_core *vinc_bind = NULL;
+
+	if (parms->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		return -EINVAL;
+
+	if (sensor && !strcmp(sensor->name, "imx214") && info->current_wins &&
+	    cap->frame.o_width == 1920 && cap->frame.o_height == 1080 &&
+	    !vinc->dma_merge_mode && !info->large_image && !info->isp_wdr_mode &&
+	    !info->use_current_win && !parms->parm.capture.reserved[0] &&
+	    !parms->parm.capture.reserved[1] && !parms->parm.capture.reserved[2] &&
+	    parms->parm.capture.timeperframe.numerator == 1 &&
+	    (parms->parm.capture.timeperframe.denominator == 30 ||
+	     parms->parm.capture.timeperframe.denominator == 60) &&
+	    info->current_wins->fps_fixed != parms->parm.capture.timeperframe.denominator) {
+		if (vin_streaming(cap) || vb2_is_busy(&cap->vb_vidq) || info->stream_count > 0)
+			return -EBUSY;
+		reformat = true;
+		oldparm.parm.capture.timeperframe.numerator = 1;
+		oldparm.parm.capture.timeperframe.denominator = info->current_wins->fps_fixed;
+		oldparm.parm.capture.capturemode = info->capture_mode;
+		oldparm.parm.capture.reserved[0] = info->use_current_win;
+		oldparm.parm.capture.reserved[1] = info->isp_wdr_mode;
+		oldparm.parm.capture.reserved[2] = info->large_image;
+		fmt.fmt.pix_mp.width = cap->frame.o_width;
+		fmt.fmt.pix_mp.height = cap->frame.o_height;
+		fmt.fmt.pix_mp.pixelformat = cap->frame.fmt.fourcc;
+		fmt.fmt.pix_mp.field = cap->frame.fmt.field;
+		fmt.fmt.pix_mp.colorspace = cap->frame.fmt.color;
+		oldfmt = fmt;
+	}
+
+	if (vinc->dma_merge_mode == 1) {
+		if (vinc->id % 4 == 1 && vin_core_gbl[vinc->id - 1]) {
+			vinc_bind = vin_core_gbl[vinc->id - 1];
+			ret = __vin_s_parm(vinc_bind, parms, false);
+			if (ret < 0)
+				return ret;
+		}
+	}
+	ret = __vin_s_parm(vinc, parms, reformat);
+	if (ret < 0) {
+		if (reformat)
+			goto restore;
 		return ret;
+	}
+	if (reformat) {
+		ret = __vin_set_fmt(vinc, &fmt);
+		if (!ret && info->current_wins->fps_fixed != parms->parm.capture.timeperframe.denominator)
+			ret = -EINVAL;
+		if (ret)
+			goto restore;
+		pr_info("vin-imx214 rate mode reconfigured to %u fps before buffers\n",
+				info->current_wins->fps_fixed);
+		return ret;
+	}
 	return 0;
+restore:
+	restore_ret = __vin_s_parm(vinc, &oldparm, true);
+	if (!restore_ret)
+		restore_ret = __vin_set_fmt(vinc, &oldfmt);
+	if (restore_ret)
+		vin_err("IMX214 failed to restore format after rate error: %d\n", restore_ret);
+	return ret;
 }
 
 static int vidioc_s_dv_timings(struct file *file, void *fh,
