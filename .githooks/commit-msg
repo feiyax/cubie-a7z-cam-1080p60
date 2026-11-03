@@ -1,0 +1,3 @@
+#!/bin/sh
+# Optional repository-local hook: git config --local core.hooksPath .githooks
+exec python3 scripts/check-commit-metadata.py --message-file "$1"

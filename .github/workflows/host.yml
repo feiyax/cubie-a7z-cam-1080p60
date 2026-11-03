@@ -1,0 +1,18 @@
+name: Host checks
+on: [push, pull_request]
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: scripts/test-host.sh
+      - name: Validate every new commit (existing human foundation exempt)
+        run: python3 scripts/check-commit-metadata.py --range HEAD
+      - name: Verify exact upstream import
+        run: |
+          baseline=$(git log --reverse --format=%H -- upstream/manifest.json | head -1)
+          test -n "$baseline"
+          python3 scripts/fetch-upstream.py --baseline-ref "$baseline"

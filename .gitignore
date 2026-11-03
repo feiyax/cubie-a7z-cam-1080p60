@@ -1,0 +1,13 @@
+/.work/
+/out/
+/runs/
+__pycache__/
+*.pyc
+*.ko
+*.so
+*.o
+*.h264
+*.mp4
+*.bin
+*.log
+/.venv/

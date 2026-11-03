@@ -1,0 +1,81 @@
+Licensing and attribution
+=========================
+
+This is a mixed-license source project. The root MIT license applies only to
+original standalone project contributions, not to third-party material.
+No ownership of vendor source, registers documentation, trademarks, or runtime
+libraries is claimed by this project or its AI-assisted contributors.
+
+Original project material
+-------------------------
+Original compatibility adapters, audit/OSD helpers, tests, build/run scripts,
+validation tools, and documentation are provided under the root MIT license.
+Using a public API or describing observed runtime behavior does not grant a
+license to the separate runtime implementation. The build still requires
+compatible board/vendor packages obtained separately by the user.
+
+Allwinner/Radxa Linux BSP source and patches
+------------------------------------------
+The scoped IMX214 and VIN source files and patches derive from Allwinner
+source distributed by Radxa:
+  https://github.com/radxa/allwinner-bsp
+  commit f9a496c24bf6b7cc31c4b5c716ece58b2c287f01
+  drivers/vin/modules/sensor/imx214.c
+  drivers/vin/vin-video/vin_video.c
+
+The upstream files identify Allwinner Technology Co., Ltd. copyrights
+(2017 and 2020-2023) and authors Zhao Wei and Yang Feng. Their current headers
+have SPDX GPL-2.0-or-later together with older GPL version 2 prose. Preserve
+those notices. The modified BSP files retain their original GPL-2.0-or-later SPDX notices;
+project changes to those files follow that grant. The resulting sensor module
+includes the GPL-2.0-only Intel-derived table below, so GPL version 2 is the
+common license for distribution of that combination. This does not remove
+rights offered by the original BSP files when considered separately.
+The applicable GPL version 2 text is in LICENSES/GPL-2.0-only.txt.
+
+Intel IMX214 register-table derivation
+-------------------------------------
+The exact upstream header under upstream/intel/ and generated 1080p60
+register table derive from:
+  https://github.com/intel/intel-camera-drivers
+  commit f06e5fc31eb36edb15118cd04b29c53b56dc126a
+  drivers/media/i2c/crlmodule/crl_imx214_configuration.h
+
+Copyright (c) 2014--2016 Intel Corporation.
+Author: Vinod Govindapillai.
+The source grants GNU GPL version 2, without an "or later" option.
+The derived register table is GPL-2.0-only. Preserve this attribution and its
+license notice in generated output; generation does not erase its origin.
+Local adaptations include the board orientation and centered crop, reset
+settling, RAW10 selection, explicit line/frame timing and initial exposure.
+These adaptations are not an endorsement or qualification by Intel.
+
+Fetched OpenMAX IL and GStreamer material
+-----------------------------------------
+The OpenMAX IL headers used for compilation contain their own Khronos Group
+copyright and permissive MIT-style grant. Preserve the full notices in any
+copies. The surrounding GStreamer gst-omx implementation has separate LGPL
+terms (the inspected gstomxvideoenc.c is LGPL-2.1-only); the headers' permissive
+terms do not apply to the entire GStreamer implementation.
+
+The scoped OpenMAX headers are retained byte-for-byte under upstream/openmax/;
+other build dependencies are fetched into ignored build/cache directories from
+pinned upstream sources. They are not relicensed by this repository. Keep
+their notices when redistributing fetched sources or derived binaries.
+
+External proprietary runtime and SDK interfaces
+-----------------------------------------------
+ISP, OpenMAX/CedarC codec and related board runtime libraries are not supplied
+or licensed by this repository. Neither private binary copies nor disassembly
+dumps are part of the public source distribution. Installed runtime hashes
+are compatibility identifiers, not permission to redistribute those files.
+Vendor SDK headers required by optional tools must be obtained from the
+corresponding vendor package/source under its own terms.
+
+Public source distribution
+--------------------------
+The intended public tree contains source, patches, pinned dependency metadata,
+and documentation. It excludes personal camera imagery, raw target logs,
+device identifiers, private network addresses, private filesystem paths,
+proprietary libraries, saved ISP contexts, and compiled hardware artifacts.
+This notice does not replace the license notices carried by individual files.
