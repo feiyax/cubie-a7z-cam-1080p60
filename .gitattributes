@@ -1,0 +1,3 @@
+# Preserve byte-identical upstream imports, including original line endings.
+upstream/** -text
+kernel/** -text

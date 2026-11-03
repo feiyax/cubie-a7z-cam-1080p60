@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "scope": "Exact scoped upstream import; kernel files are modified only in later commits.",
+  "files": [
+    {
+      "path": "kernel/drivers/vin/modules/sensor/imx214.c",
+      "commit": "f9a496c24bf6b7cc31c4b5c716ece58b2c287f01",
+      "sha256": "c3cd309c8f8993baa1b93fa43d8c4e6c5a3dc68d360e2b7370c6d629f0dc7057",
+      "url": "https://raw.githubusercontent.com/radxa/allwinner-bsp/f9a496c24bf6b7cc31c4b5c716ece58b2c287f01/drivers/vin/modules/sensor/imx214.c",
+      "baseline_only": true
+    },
+    {
+      "path": "kernel/drivers/vin/vin-video/vin_video.c",
+      "commit": "f9a496c24bf6b7cc31c4b5c716ece58b2c287f01",
+      "sha256": "3c2074e28be739dae753fd9dd92471f4382fe34739ffbda124a6e79c07ce578e",
+      "url": "https://raw.githubusercontent.com/radxa/allwinner-bsp/f9a496c24bf6b7cc31c4b5c716ece58b2c287f01/drivers/vin/vin-video/vin_video.c",
+      "baseline_only": true
+    },
+    {
+      "path": "upstream/intel/crl_imx214_configuration.h",
+      "commit": "f06e5fc31eb36edb15118cd04b29c53b56dc126a",
+      "sha256": "479272cc743785054afe309a39008f9da96a94daeee9b8155b47485f12bd6bfd",
+      "url": "https://raw.githubusercontent.com/intel/intel-camera-drivers/f06e5fc31eb36edb15118cd04b29c53b56dc126a/drivers/media/i2c/crlmodule/crl_imx214_configuration.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Audio.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "8bee1e835192abe723a105437c27350157196c9984a0af0827a039e344698417",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Audio.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Component.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "1511c182af584c7605682d1b9cba4949cdb99169a78730a677ea1a9e985f778b",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Component.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_ComponentExt.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "9b671d2d4710875ffa155ba8230a1b4f7bbf1f11e5a04dbf854159a39b7d1256",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_ComponentExt.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_ContentPipe.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "3d83ce4f1313757b4db838a9122d99048176e7edeb104e52b90ff9d52b8955ec",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_ContentPipe.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Core.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "f27b9f4550b6be3428b952b5d3c671e7a099243985afdb6ed78b0fbdd0d96331",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Core.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_CoreExt.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "dc59a7cefb5d256b4d4bd3b7d6458f0610bbe961d8c172d563607f43bd7d3568",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_CoreExt.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_IVCommon.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "848b0a597e5d618577b6c7ca90df6effbe2e4780ea0ab2be89407024cc8f26d6",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_IVCommon.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Image.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "7a3f1a490953a4453347fb2c99dc4d9dcc9f3418202942aef6aaeb5e7b65dde7",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Image.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Index.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "7950d273de42b6a229be38c153fa4c85a88a3f4574c3bda06bc7ef962adef2f9",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Index.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_IndexExt.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "40c835afcd380c0ba73faaecb740ca2d01e60aaaf94f1910c71bc8df20ea1022",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_IndexExt.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Other.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "a20c53c71ba440d6f1293625a79377dbc2f688c6ec7e81560790acdc134191e5",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Other.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Types.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "55606325f518eff87b9b98c4c5f510b22befcb36028e668ac35f5b30a423b02f",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Types.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_Video.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "906a50c14db4596c642752e73d7e4ff6b7de4c3c14d2639073cb6c7dea722222",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_Video.h",
+      "baseline_only": false
+    },
+    {
+      "path": "upstream/openmax/OMX_VideoExt.h",
+      "commit": "7efb633970f5816e377f3c861fa0d63698740cc1",
+      "sha256": "2ea70d9ecbc35389b2cf6b391c5a60b8602e3528929db440eb94221603b9b80a",
+      "url": "https://raw.githubusercontent.com/GStreamer/gst-omx/7efb633970f5816e377f3c861fa0d63698740cc1/omx/openmax/OMX_VideoExt.h",
+      "baseline_only": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "bsp": {
+    "id": "bsp",
+    "group": "kernel",
+    "file": "bsp.tar.gz",
+    "url": "https://codeload.github.com/radxa/allwinner-bsp/tar.gz/f9a496c24bf6b7cc31c4b5c716ece58b2c287f01",
+    "sha256": "2a6218f75165296d5fe54cddb721cbceef2eb7ff6919ece0806dac2c9158dc53",
+    "commit": "f9a496c24bf6b7cc31c4b5c716ece58b2c287f01",
+    "archive_root": "allwinner-bsp-f9a496c24bf6b7cc31c4b5c716ece58b2c287f01"
+  }
+}
